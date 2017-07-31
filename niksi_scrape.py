@@ -1,7 +1,5 @@
 import asyncio
-import logging
 import csv
-
 import aiohttp
 from tqdm import tqdm
 from bs4 import BeautifulSoup
@@ -47,25 +45,30 @@ def parse_niksit(niksi_json):
     return niksit
 
 
+async def get_number_of_pages(session):
+    niksi_json = await fetch(NIKSI_URL, session)
+    return niksi_json['total'] // ITEMS_PER_PAGE
+
+async def fetch_page(page, session, semaphore):
+    url = '{}?page={}'.format(NIKSI_URL, page)
+    response = await fetch_with_semaphore(url, session, semaphore)
+    return parse_niksit(response)
+
 async def scrape_niksit():
     async with aiohttp.ClientSession() as session:
-        niksi_json = await fetch(NIKSI_URL, session)
-        pages = niksi_json['total'] // ITEMS_PER_PAGE
-
+        pages = await get_number_of_pages(session)
         semaphore = asyncio.Semaphore(MAX_REQUESTS)
-        tasks = []
-        for page in range(1, pages + 1):
-            url = '{}?page={}'.format(NIKSI_URL, page)
-            request = fetch_with_semaphore(url, session, semaphore)
-            tasks.append(asyncio.ensure_future(request))
-
+        requests = [
+            fetch_page(page, session, semaphore)
+            for page in range(1, pages + 1)
+        ]
         with open('niksit.csv', 'w+') as f:
             fieldnames = fieldnames=('id', 'category', 'title', 'contents')
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            for task in tqdm(asyncio.as_completed(tasks), total=len(tasks)):
-                niksi_json = await task
-                for niksi in parse_niksit(niksi_json):
+            total = len(requests)
+            for request in tqdm(asyncio.as_completed(requests), total=total):
+                for niksi in await request:
                     writer.writerow(niksi)
 
 
