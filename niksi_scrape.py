@@ -31,13 +31,16 @@ def parse_niksit(niksi_json):
     soup = BeautifulSoup(niksi_json['html'], 'html.parser')
 
     for niksi in soup.find_all('div', {'class': 'lifehack-card-body'}):
+        content = get_child_content(niksi, 'div', 'lifehack-card-text')
+        if not content:
+            continue
+
         category = get_child_content(niksi, 'div', 'lifehack-card-category')
-        contents = get_child_content(niksi, 'div', 'lifehack-card-text')
         title = get_child_content(niksi, 'h5', 'lifehack-card-title')
         id_field = get_child(niksi, 'span', 'lifehack-action-button')
         niksit.append({
             'category': category,
-            'contents': contents,
+            'content': content,
             'title': title,
             'id': id_field['data-lifehack-id'],
         })
@@ -63,13 +66,13 @@ async def scrape_niksit():
             for page in range(1, pages + 1)
         ]
         with open('niksit.csv', 'w+') as f:
-            fieldnames = fieldnames=('id', 'category', 'title', 'contents')
+            fieldnames = ('id', 'category', 'title', 'content')
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             total = len(requests)
             for request in tqdm(asyncio.as_completed(requests), total=total):
-                for niksi in await request:
-                    writer.writerow(niksi)
+                niksit = await request
+                writer.writerows(niksit)
 
 
 if __name__ == '__main__':
